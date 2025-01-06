@@ -1,5 +1,6 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS  # 导入 CORS 支持
+import os
 import spacy
 from spacy.matcher import PhraseMatcher
 
@@ -7,19 +8,21 @@ from spacy.matcher import PhraseMatcher
 app = Flask(__name__)
 CORS(app)  # 允许跨域请求
 
-# 加载 spaCy 英文模型
-nlp = spacy.load("en_core_web_sm")
+# 确保 spaCy 模型已安装
+try:
+    nlp = spacy.load("en_core_web_sm")
+except OSError:
+    os.system("python -m spacy download en_core_web_sm")
+    nlp = spacy.load("en_core_web_sm")
 
 # 症状关键词列表
-symptom_keywords = ["headache", "fever", "sore throat", "runny nose", "pain", 
-                    "nasal congestion", "body aches and pains", "acid", 
-                    "regurgitation", "heartburn", "indigestion", "upset", 
-                    "stomach", "flatulence", "wind"]
+symptom_keywords = ["headache", "cough", "fever", "sore throat", "runny nose", "muscle pain"]
 
 # 使用 PhraseMatcher 来匹配症状短语
 matcher = PhraseMatcher(nlp.vocab)
 patterns = [nlp.make_doc(symptom) for symptom in symptom_keywords]
 matcher.add("SYMPTOMS", patterns)
+
 
 # 否定检测函数
 def is_negated(token):
@@ -32,6 +35,7 @@ def is_negated(token):
             return True
     return False
 
+
 # 检查对比连词后的状态
 def check_contrast_and_status(doc):
     contrast_words = {"but", "however"}
@@ -43,6 +47,7 @@ def check_contrast_and_status(doc):
                     return True  # 对比句中状态良好，症状已消失
     return False
 
+
 # 时态检测函数
 def get_tense(token):
     verb = token.head
@@ -53,6 +58,7 @@ def get_tense(token):
     elif verb.text in {"will", "going"}:
         return "future"
     return "unknown"
+
 
 # 解析用户输入
 def parse_input_function(user_input):
@@ -78,17 +84,20 @@ def parse_input_function(user_input):
         if resolved_to_fine:
             current = False
 
+        # 只添加当前且未否定的症状
         if current and not negated:
             detected_symptoms.append(symptom)
 
         processed_tokens.add(symptom_root)
 
-    return {"symptoms": detected_symptoms}
+    return detected_symptoms
+
 
 # 健康检查接口
 @app.route('/health', methods=['GET'])
 def health_check():
     return jsonify({"status": "healthy"}), 200
+
 
 # 症状解析接口
 @app.route('/parse_input', methods=['POST'])
@@ -103,10 +112,12 @@ def parse_input():
     if not user_input:
         return jsonify({"error": "Input field is empty"}), 400
 
-    # 调用解析功能
-    result = parse_input_function(user_input)
-    return jsonify(result), 200
+    # 调用解析功能，仅返回症状列表
+    symptoms = parse_input_function(user_input)
+    return jsonify({"symptoms": symptoms}), 200
+
 
 if __name__ == "__main__":
-    # 启动 Flask 服务，监听所有网络接口
-    app.run(host="0.0.0.0", port=5001, debug=True)
+    # 使用环境变量 PORT 或默认端口 5001
+    port = int(os.environ.get("PORT", 5001))
+    app.run(host="0.0.0.0", port=port, debug=True)
