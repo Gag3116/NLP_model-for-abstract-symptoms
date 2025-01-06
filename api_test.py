@@ -11,13 +11,15 @@ CORS(app)  # 允许跨域请求
 nlp = spacy.load("en_core_web_sm")
 
 # 症状关键词列表
-symptom_keywords = ["headache", "fever", "sore throat", "runny nose", "pain","nasal congestion", "body aches and pains","acid","regurgitation","heartburn","indigestion","upset","stomach","flatulence","wind",]
+symptom_keywords = ["headache", "fever", "sore throat", "runny nose", "pain", 
+                    "nasal congestion", "body aches and pains", "acid", 
+                    "regurgitation", "heartburn", "indigestion", "upset", 
+                    "stomach", "flatulence", "wind"]
 
 # 使用 PhraseMatcher 来匹配症状短语
 matcher = PhraseMatcher(nlp.vocab)
 patterns = [nlp.make_doc(symptom) for symptom in symptom_keywords]
 matcher.add("SYMPTOMS", patterns)
-
 
 # 否定检测函数
 def is_negated(token):
@@ -30,7 +32,6 @@ def is_negated(token):
             return True
     return False
 
-
 # 检查对比连词后的状态
 def check_contrast_and_status(doc):
     contrast_words = {"but", "however"}
@@ -42,7 +43,6 @@ def check_contrast_and_status(doc):
                     return True  # 对比句中状态良好，症状已消失
     return False
 
-
 # 时态检测函数
 def get_tense(token):
     verb = token.head
@@ -53,7 +53,6 @@ def get_tense(token):
     elif verb.text in {"will", "going"}:
         return "future"
     return "unknown"
-
 
 # 解析用户输入
 def parse_input_function(user_input):
@@ -79,31 +78,17 @@ def parse_input_function(user_input):
         if resolved_to_fine:
             current = False
 
-        detected_symptoms.append({
-            "symptom": symptom,
-            "tense": tense,
-            "current": current,
-            "negated": negated
-        })
+        if current and not negated:
+            detected_symptoms.append(symptom)
 
         processed_tokens.add(symptom_root)
 
-    # 提取当前确认的症状
-    confirmed_symptoms = [
-        symptom["symptom"]
-        for symptom in detected_symptoms
-        if symptom["current"] and not symptom["negated"]
-    ]
-
-    feedback = f"当前确认的症状: {', '.join(confirmed_symptoms) if confirmed_symptoms else '无'}"
-    return {"feedback": feedback, "details": detected_symptoms}
-
+    return {"symptoms": detected_symptoms}
 
 # 健康检查接口
 @app.route('/health', methods=['GET'])
 def health_check():
     return jsonify({"status": "healthy"}), 200
-
 
 # 症状解析接口
 @app.route('/parse_input', methods=['POST'])
@@ -121,7 +106,6 @@ def parse_input():
     # 调用解析功能
     result = parse_input_function(user_input)
     return jsonify(result), 200
-
 
 if __name__ == "__main__":
     # 启动 Flask 服务，监听所有网络接口
